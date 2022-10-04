@@ -1,0 +1,68 @@
+include "cube.idp"
+include "ffmatlib.idp"
+load "msh3"
+
+// Parameters
+real ct=0.5;
+real cl=0.9;
+real mu=ct^2;
+real lambda=cl^2-2*ct^2;
+complex om=10;
+
+
+// Mesh
+int[int] Nxyz = [115, 115,10];
+//90,90,15
+real [int, int] Bxyz = [[-2,2], [-2, 2], [-0.2, 0.2]];
+int [int, int] Lxyz = [[1,1], [1,1], [2,3]];
+mesh3 Th = Cube(Nxyz, Bxyz, Lxyz);
+
+// Fespace
+fespace Vh(Th, [P1, P1, P1]);
+Vh <complex> [u1, u2, u3], [v1, v2, v3];
+fespace VVh(Th, P1);
+real sig=0.1;
+VVh fz=(1/sig/sig/2/pi*exp(-(x^2+y^2)/2/sig/sig))*z;
+VVh fx=-x/sig/sig/2/pi*exp(-(x^2+y^2)/2/sig/sig)*z;
+VVh fy=-y/sig/sig/2/pi*exp(-(x^2+y^2)/2/sig/sig)*z;
+VVh btop1=-y/2/sig/sig/2/pi*exp(-(x^2+y^2)/2/sig/sig);
+VVh btop2=x/2/sig/sig/2/pi*exp(-(x^2+y^2)/2/sig/sig); 
+
+// Macro
+real sqrt2 = sqrt(2.);
+macro epsilon(u1, u2, u3) [
+    dx(u1), dy(u2), dz(u3),
+    (dz(u2) + dy(u3))/sqrt2,
+    (dz(u1) + dx(u3))/sqrt2,
+    (dy(u1) + dx(u2))/sqrt2] //
+macro div(u1, u2, u3) (dx(u1) + dy(u2) + dz(u3)) //
+
+//PML
+real alpha =5;
+VVh <complex> alp= (1.i*alpha*om*(sqrt(x^2+y^2)>1.3)*(sqrt(x^2+y^2)-1.3));
+
+
+// Problem
+//     + int2d(Th,3)(-btop1*v1-btop2*v2) 
+problem Lame([u1, u2, u3], [v1, v2, v3],solver=LU)=
+    int3d(Th)(
+          lambda*div(u1, u2, u3)*div(v1, v2, v3)
+        + 2.*mu*( epsilon(u1, u2, u3)'*epsilon(v1, v2, v3))
+        - (om^2+alp)*(u1*v1+u2*v2+u3*v3)
+    )
+    + int3d(Th)(
+       - fx*v1-fy*v2-fz*v3
+    )
+    + on(1, u1=0, u2=0, u3=0)
+    ;
+
+Lame;
+VVh sol=real(u3);
+savemesh(Th,"exp1.mesh");
+ffSaveVh(Th,VVh,"exp2.txt");
+ffSaveData(sol,"exp3.txt");
+sol=real(u2);
+ffSaveData(sol,"exp4.txt");
+sol=real(u1);
+ffSaveData(sol,"exp5.txt");
+
